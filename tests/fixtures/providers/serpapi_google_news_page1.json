@@ -1,0 +1,43 @@
+{
+  "search_metadata": {
+    "id": "fixture-1",
+    "status": "Success",
+    "json_endpoint": "https://serpapi.com/searches/fixture/fixture.json",
+    "created_at": "2024-01-31 12:00:00 UTC"
+  },
+  "search_parameters": {
+    "engine": "google_news",
+    "q": "\"疾管署\" \"流感\"",
+    "gl": "tw",
+    "hl": "zh-TW",
+    "api_key": "SHOULD_NEVER_BE_WRITTEN_TO_DISK"
+  },
+  "news_results": [
+    {
+      "position": 1,
+      "title": "疾管署：流感疫情持續升溫",
+      "link": "https://news.example.tw/article/2024/01/15/flu-surge?utm_source=google&utm_medium=rss",
+      "source": {"name": "範例新聞網"},
+      "date": "01/15/2024, 08:30 AM, +0800 CST",
+      "snippet": "疾管署今日公布最新流感監測資料"
+    },
+    {
+      "position": 2,
+      "title": "中央社：疾管署籲高風險族群接種流感疫苗",
+      "link": "https://www.wire.example.tw/news/aipl/202401160123.aspx",
+      "source": {"name": "中央社"},
+      "date": "01/16/2024, 09:00 AM, +0800 CST",
+      "stories": [
+        {
+          "title": "疾管署籲高風險族群接種流感疫苗",
+          "link": "https://carrier.example.tw/realtimenews/20240116001",
+          "source": {"name": "轉載媒體"},
+          "date": "01/16/2024, 09:30 AM, +0800 CST"
+        }
+      ]
+    }
+  ],
+  "serpapi_pagination": {
+    "next": "https://serpapi.com/search.json?engine=google_news&q=x&start=100"
+  }
+}

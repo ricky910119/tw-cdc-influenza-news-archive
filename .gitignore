@@ -1,0 +1,66 @@
+# --- secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.yaml
+secrets.yml
+cookies.json
+cookies.txt
+
+# --- local config (the example is committed, the real one is not) ---
+config.yaml
+config.yml
+configs/local.yaml
+configs/*.local.yaml
+
+# --- virtualenv / tooling ---
+.venv/
+venv/
+ENV/
+.python-version.local
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- crawl state, raw provider responses, outputs ---
+data/raw/**
+!data/raw/.gitkeep
+data/state/**
+!data/state/.gitkeep
+data/output/**
+!data/output/.gitkeep
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.db
+*.db-wal
+*.db-shm
+
+# --- logs (may contain URLs, headers, response bodies) ---
+logs/
+*.log
+*.log.*
+
+# --- browser artefacts: never store or reuse a personal profile ---
+.playwright/
+playwright-profile/
+browser-profile/
+user-data-dir/
+.cache/ms-playwright/
+trace.zip
+*.har
+
+# --- editor / OS ---
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

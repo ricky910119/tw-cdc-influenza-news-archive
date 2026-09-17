@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>"疾管署" "流感" - Google News</title>
+    <link>https://news.google.com/search?q=x</link>
+    <item>
+      <title>疾管署：流感疫情持續升溫 - 範例新聞網</title>
+      <link>https://news.google.com/rss/articles/CBMi?oc=5&amp;url=https://news.example.tw/article/2024/01/15/flu-surge</link>
+      <pubDate>Mon, 15 Jan 2024 00:30:00 GMT</pubDate>
+      <source url="https://news.example.tw">範例新聞網</source>
+      <description>疾管署今日公布最新流感監測資料</description>
+    </item>
+    <item>
+      <title>疾病管制署說明流感疫苗供應 - 示範日報</title>
+      <link>https://news.example.tw/article/2024/01/20/vaccine-supply</link>
+      <pubDate>Sat, 20 Jan 2024 03:00:00 GMT</pubDate>
+      <source url="https://daily.example.tw">示範日報</source>
+    </item>
+  </channel>
+</rss>

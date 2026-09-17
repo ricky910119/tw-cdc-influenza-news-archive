@@ -1,0 +1,221 @@
+# tw-cdc-influenza-news-archive - default configuration
+#
+# Every path is resolved relative to the REPOSITORY ROOT unless it is
+# absolute. No developer-machine absolute paths belong in this file.
+
+schema_version: 1
+
+project:
+  name: tw-cdc-influenza-news-archive
+  version: "0.1.0"
+  # The contact address is read from this environment variable and put in
+  # the User-Agent so site operators can reach a human. We never pretend to
+  # be Googlebot or any browser we are not.
+  contact_email_env: CRAWLER_CONTACT_EMAIL
+  user_agent_template: "{name}/{version} (+{contact_email})"
+  # If the contact address is missing, fail doctor rather than send an
+  # anonymous User-Agent.
+  require_contact_email: true
+
+date_range:
+  start_date: "2023-01-01"
+  end_date: "2026-12-31"
+  # Display timezone and the timezone that decides "today". The effective
+  # end date is min(end_date, today in this timezone). We never query the
+  # future.
+  timezone: "Asia/Taipei"
+
+# Queries live here, never in the fetching logic.
+queries:
+  - id: q_quoted_tw_flu
+    text: '"疾管署" "流感"'
+    language: zh-TW
+  - id: q_quoted_full_flu
+    text: '"疾病管制署" "流感"'
+    language: zh-TW
+  - id: q_quoted_tw_influenza
+    text: '"疾管署" influenza'
+    language: zh-TW
+  - id: q_quoted_full_influenza
+    text: '"疾病管制署" influenza'
+    language: zh-TW
+  - id: q_bare_tw_flu
+    text: '疾管署 流感'
+    language: zh-TW
+  - id: q_bare_full_flu
+    text: '疾病管制署 流感'
+    language: zh-TW
+
+# Used only to annotate matched_keywords on a record. Not a filter: an
+# article discovered by a configured query is kept even if none of these
+# strings survive extraction.
+keywords:
+  - "疾管署"
+  - "疾病管制署"
+  - "流感"
+  - "influenza"
+
+slicing:
+  # [start, end) half-open slices, always.
+  initial_granularity: month     # month | week | day
+  # A slice is "suspected truncated" when the provider returns at least
+  # result_limit_ratio * max_results_per_slice results, or reports that
+  # more pages exist beyond max_pages_per_slice.
+  max_results_per_slice: 100
+  result_limit_ratio: 0.9
+  split_month_to_week: true
+  split_week_to_day: true
+  # A day slice cannot be split further; it is recorded with
+  # completeness_warning instead.
+
+providers:
+  serpapi_google_news:
+    enabled: true
+    api_key_env: SERPAPI_API_KEY
+    base_url: "https://serpapi.com/search.json"
+    engine: google_news
+    gl: tw
+    hl: zh-TW
+    sort_by: date
+    page_size: 100
+    max_pages_per_slice: 10
+    save_raw_response: true
+    # Quota exhaustion / auth failure stops the provider immediately
+    # (fail closed) instead of silently returning a short result set.
+    fail_closed_on_quota: true
+
+  # Optional second SerpApi adapter hitting the classic Google Search News
+  # tab. Results are MERGED with google_news, never assumed identical.
+  serpapi_google_search_news_tab:
+    enabled: false
+    api_key_env: SERPAPI_API_KEY
+    base_url: "https://serpapi.com/search.json"
+    engine: google
+    tbm: nws
+    gl: tw
+    hl: zh-TW
+    page_size: 100
+    max_pages_per_slice: 10
+    save_raw_response: true
+    fail_closed_on_quota: true
+
+  google_news_rss:
+    # Best-effort only. Not a completeness guarantee: Google News RSS
+    # caps and reshapes result sets in ways we cannot observe.
+    enabled: false
+    base_url: "https://news.google.com/rss/search"
+    hl: zh-TW
+    gl: TW
+    ceid: "TW:zh-Hant"
+    requests_per_minute: 3
+    cache_raw_xml: true
+    # On a redirect to a consent/sorry page, a CAPTCHA, or any block
+    # signal: stop this provider for the run. We do not work around it.
+    stop_on_block: true
+
+  manual_urls:
+    enabled: true
+
+access:
+  max_concurrency: 2
+  requests_per_domain_per_minute: 6
+  request_timeout_seconds: 30
+  max_retries: 3
+  backoff_base_seconds: 2.0
+  backoff_max_seconds: 60.0
+  backoff_jitter_seconds: 1.5
+  max_redirects: 5
+  respect_robots_txt: true
+  robots_cache_ttl_seconds: 86400
+  obey_retry_after: true
+  # Domains we have blocked ourselves on are skipped for the rest of the
+  # run and recorded in the coverage report.
+  stop_domain_after_block: true
+
+extraction:
+  min_content_chars: 200
+  # Re-fetching an already-successful URL is skipped unless it is older
+  # than this, or --force-refetch is given.
+  recrawl_after_days: 30
+  strip_boilerplate: true
+  playwright:
+    # Only used when the httpx + trafilatura + HTML-fallback chain shows
+    # positive evidence that the page needs JavaScript.
+    enabled: true
+    browser: chromium
+    headless: true
+    navigation_timeout_seconds: 30
+    wait_until: domcontentloaded
+    # Explicit locators to wait for, in order; no blind sleeps.
+    content_locators:
+      - "article"
+      - "main"
+      - "[itemprop='articleBody']"
+    max_pages_per_run: 200
+
+deduplication:
+  tracking_params:
+    - "utm_source"
+    - "utm_medium"
+    - "utm_campaign"
+    - "utm_term"
+    - "utm_content"
+    - "utm_id"
+    - "gclid"
+    - "fbclid"
+    - "igshid"
+    - "mc_cid"
+    - "mc_eid"
+    - "ref"
+    - "ref_src"
+    - "spm"
+    - "from"
+    - "share_source"
+    - "yptr"
+  strip_fragment: true
+  lowercase_host: true
+  drop_www: true
+  # Titles at or above this ratio are FLAGGED as possible duplicates.
+  # Never auto-deleted.
+  title_similarity_threshold: 0.92
+  syndication:
+    enabled: true
+    # Identical body text across different domains is treated as wire
+    # copy: clustered, both copies kept.
+    min_content_chars: 400
+
+coverage:
+  # A month is marked incomplete when either ratio is exceeded.
+  date_parse_failure_threshold: 0.20
+  content_unavailable_threshold: 0.30
+
+output:
+  directory: "data/output"
+  jsonl_name: "articles.jsonl"
+  json_name: "articles.json"
+  coverage_name: "coverage_report.json"
+  coverage_markdown_name: "coverage_report.md"
+  failed_name: "failed_urls.jsonl"
+  manifest_name: "run_manifest.json"
+  # Pretty JSON costs a little space and saves a lot of eyeballing.
+  json_indent: 2
+
+paths:
+  raw_dir: "data/raw"
+  state_dir: "data/state"
+  database: "data/state/archive.sqlite3"
+
+logging:
+  level: INFO
+  file: "logs/run.log"
+  # Substrings whose VALUES are redacted anywhere they would be written.
+  redact_keys:
+    - "api_key"
+    - "apikey"
+    - "serpapi_api_key"
+    - "authorization"
+    - "cookie"
+    - "set-cookie"
+    - "x-api-key"
+    - "token"
+    - "secret"

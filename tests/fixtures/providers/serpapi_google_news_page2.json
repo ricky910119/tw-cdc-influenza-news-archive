@@ -1,0 +1,13 @@
+{
+  "search_metadata": {"id": "fixture-2", "status": "Success"},
+  "search_parameters": {"engine": "google_news", "q": "x", "api_key": "SHOULD_NEVER_BE_WRITTEN_TO_DISK"},
+  "news_results": [
+    {
+      "position": 1,
+      "title": "疾病管制署說明流感疫苗供應",
+      "link": "https://news.example.tw/article/2024/01/20/vaccine-supply",
+      "source": {"name": "範例新聞網"},
+      "date": "01/20/2024, 11:00 AM, +0800 CST"
+    }
+  ]
+}

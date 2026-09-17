@@ -1,0 +1,4 @@
+# one URL per line; blank lines and comments ignored
+https://news.example.tw/article/2024/02/01/flu-season
+
+https://daily.example.tw/2024/02/02/vaccine
