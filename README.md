@@ -310,6 +310,12 @@ URL 狀態：`discovered` → `queued` → `fetching` → `success` / `retryable
 
 `.env` 只放三個變數（範本見 `.env.example`，只含 placeholder）：
 `SERPAPI_API_KEY`、`CRAWLER_CONTACT_EMAIL`、`NEWS_CONFIG_PATH`。
+
+**`.env` 由程式自己載入。** 每個指令啟動時都會讀 repository root 的 `.env`，所以不論
+是透過 `run.ps1` 還是直接呼叫 `.venv\Scripts\python.exe -m tw_cdc_influenza_news ...`
+都看得到。兩條規則：已經在 shell 環境裡設好的變數**優先於** `.env`（排程或 CI 明確設定
+的值不會被磁碟上的舊檔蓋掉）；`doctor` 會列一行 `Env file` 說明有沒有找到並載入它。
+
 `.env`、`.venv`、API 回應快取、SQLite、輸出、瀏覽器 profile、cookies、logs
 都在 `.gitignore` 裡。
 

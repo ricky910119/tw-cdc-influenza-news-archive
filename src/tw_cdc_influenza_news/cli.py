@@ -196,6 +196,21 @@ def doctor(
     except OSError as exc:
         add("Output directories", False, f"not writable: {exc}")
 
+    # --- .env ---------------------------------------------------------------
+    # load_config() has already loaded it; this row exists so that "I filled
+    # in .env and it still says the variable is missing" is diagnosable
+    # without reading the source.
+    env_file = config.root / ".env"
+    if env_file.is_file():
+        add("Env file", True, f"{env_file} found and loaded")
+    else:
+        add(
+            "Env file",
+            None,
+            f"no {env_file}. Copy .env.example to .env, or set the variables "
+            "in your shell.",
+        )
+
     # --- secrets (presence only) -------------------------------------------
     serp = config.providers.serpapi_google_news
     if serp.enabled:

@@ -367,6 +367,61 @@ class AppConfig(BaseModel):
         }
 
 
+def load_env_file(root: Path | None = None, *, filename: str = ".env") -> list[str]:
+    """Load ``<root>/.env`` into the process environment. Returns the names set.
+
+    Without this, the documented install flow is broken: ``run.ps1`` loads
+    ``.env`` but a direct ``python -m tw_cdc_influenza_news doctor`` does not,
+    so a user who filled in ``.env`` correctly is told their contact address
+    is missing.
+
+    Two rules, both deliberate:
+
+    * A variable already present in the real environment WINS. ``.env`` is a
+      convenience for a developer machine, not an override of what a shell,
+      a CI job or a scheduled task explicitly set.
+    * Values are never logged -- only the NAMES are returned, so a caller can
+      say "loaded 2 variables" without saying which secret it read.
+
+    Hand-rolled rather than pulling in python-dotenv: the format we document
+    is ``NAME=value`` with ``#`` comments, and a dependency for that would be
+    one more pin in the lock file for twenty lines of parsing.
+    """
+    root = root or repository_root()
+    env_path = root / filename
+    if not env_path.is_file():
+        return []
+
+    loaded: list[str] = []
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        # A malformed .env must not stop the tool: doctor reports the missing
+        # variable instead, which is the actionable message either way.
+        return []
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        name, separator, value = line.partition("=")
+        if not separator:
+            continue
+        name = name.strip()
+        if not name:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if os.environ.get(name):
+            continue  # the real environment wins
+        os.environ[name] = value
+        loaded.append(name)
+    return loaded
+
+
 def default_config_path(root: Path | None = None) -> Path:
     root = root or repository_root()
     env_path = os.environ.get(CONFIG_PATH_ENV, "").strip()
@@ -384,6 +439,9 @@ def load_config(path: str | Path | None = None, *, root: Path | None = None) -> 
     error message.
     """
     root = root or repository_root()
+    # Before anything reads the environment -- including NEWS_CONFIG_PATH,
+    # which decides which file we are about to read.
+    load_env_file(root)
     config_path = Path(path).expanduser() if path else default_config_path(root)
     if not config_path.is_absolute():
         config_path = root / config_path
