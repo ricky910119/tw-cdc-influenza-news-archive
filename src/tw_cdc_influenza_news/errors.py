@@ -78,6 +78,29 @@ DOMAIN_LEVEL_BLOCKS: frozenset[ErrorCode] = frozenset(
     }
 )
 
+#: Text that identifies an interstitial rather than a page, wherever it is
+#: found. Shared by the HTTP layer and the extractor on purpose: HTML that
+#: arrives through the Playwright fallback never passes through the HTTP
+#: response classifier, so a copy of this list in only one of the two places
+#: leaves the browser path unguarded.
+#:
+#: Markers are specific on purpose (``g-recaptcha``, ``recaptcha/api.js``)
+#: rather than the bare word "captcha": a news article *about* CAPTCHAs is a
+#: page we want, not a block.
+INTERSTITIAL_MARKERS: tuple[tuple[str, ErrorCode], ...] = (
+    ("unusual traffic", ErrorCode.UNUSUAL_TRAFFIC),
+    ("我們的系統偵測到", ErrorCode.UNUSUAL_TRAFFIC),
+    ("g-recaptcha", ErrorCode.CAPTCHA),
+    ("recaptcha/api.js", ErrorCode.CAPTCHA),
+    ("hcaptcha.com", ErrorCode.CAPTCHA),
+    ("cf-challenge", ErrorCode.CAPTCHA),
+    ("請完成驗證", ErrorCode.CAPTCHA),
+    ("are you a robot", ErrorCode.CAPTCHA),
+    ("access denied", ErrorCode.ACCESS_DENIED),
+    ("拒絕存取", ErrorCode.ACCESS_DENIED),
+)
+
+
 PROVIDER_FATAL_CODES: frozenset[ErrorCode] = frozenset(
     {
         ErrorCode.PROVIDER_AUTH_ERROR,

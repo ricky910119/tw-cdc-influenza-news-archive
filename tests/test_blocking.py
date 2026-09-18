@@ -61,6 +61,15 @@ def test_a_200_carrying_a_captcha_is_still_a_block():
     assert is_blocked(code)
 
 
+def test_both_detection_paths_share_one_marker_list():
+    """Two copies of this list would let the browser path drift behind the
+    HTTP path, which is exactly how a rendered CAPTCHA gets stored as news."""
+    from tw_cdc_influenza_news.errors import INTERSTITIAL_MARKERS
+    from tw_cdc_influenza_news.fetching.http_client import BODY_BLOCK_MARKERS
+
+    assert BODY_BLOCK_MARKERS is INTERSTITIAL_MARKERS
+
+
 def test_a_pdf_is_rejected_as_unsupported_not_as_a_block():
     code = classify_response(200, "%PDF-1.7", "application/pdf")
 

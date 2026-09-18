@@ -23,7 +23,12 @@ from tw_cdc_influenza_news.deduplication import (
     merge_string_lists,
     title_date_key,
 )
-from tw_cdc_influenza_news.errors import ErrorCode, is_blocked, is_retryable
+from tw_cdc_influenza_news.errors import (
+    ErrorCode,
+    is_blocked,
+    is_domain_level_block,
+    is_retryable,
+)
 from tw_cdc_influenza_news.extraction import ExtractionOutcome, extract_article
 from tw_cdc_influenza_news.fetching.http_client import FetchOutcome, PoliteFetcher
 from tw_cdc_influenza_news.fetching.playwright_fallback import PlaywrightRenderer
@@ -226,7 +231,14 @@ class UrlPipeline:
                     tz_name=self.config.date_range.timezone,
                     strip_furniture=self.config.extraction.strip_boilerplate,
                 )
-                if rendered.content_length > extraction.content_length:
+                if rendered.block_code is not None:
+                    # An interstitial the browser was served. It usually has
+                    # LESS text than the shell we started from, so the
+                    # longest-body rule below would discard the one signal
+                    # that matters. The block always wins.
+                    extraction.block_code = rendered.block_code
+                    fetch.final_url = render.final_url or fetch.final_url
+                elif rendered.content_length > extraction.content_length:
                     rendered.method = ExtractionMethod.PLAYWRIGHT_TRAFILATURA
                     extraction = rendered
                     fetch.final_url = render.final_url or fetch.final_url
@@ -261,10 +273,21 @@ class UrlPipeline:
                 final_url=fetch.final_url,
                 run_id=self.run_id,
             )
+            # A paywall or login wall indicts one article; a CAPTCHA or an
+            # "unusual traffic" interstitial indicts the whole host, and the
+            # answer to that is to stop asking it for anything else.
+            domain_level = is_domain_level_block(extraction.block_code)
+            if domain_level and self.config.access.stop_domain_after_block:
+                self.fetcher.blocks.block_domain(
+                    row.domain,
+                    extraction.block_code,
+                    article.error_message or "",
+                    url=row.url,
+                )
             self.db.record_block(
                 self.run_id,
-                scope="url",
-                target=row.record_id,
+                scope="domain" if domain_level else "url",
+                target=row.domain if domain_level else row.record_id,
                 error_code=extraction.block_code.value,
                 detail=article.error_message or "",
                 url=row.url,

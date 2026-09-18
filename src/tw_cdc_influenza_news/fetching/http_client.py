@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 import httpx
 
 from tw_cdc_influenza_news.config import AppConfig
-from tw_cdc_influenza_news.errors import ErrorCode
+from tw_cdc_influenza_news.errors import INTERSTITIAL_MARKERS, ErrorCode
 from tw_cdc_influenza_news.fetching.robots import RobotsCache
 from tw_cdc_influenza_news.logging_utils import get_logger
 from tw_cdc_influenza_news.ratelimit import BlockRegistry, DomainRateLimiter, backoff_delay
@@ -33,19 +33,9 @@ from tw_cdc_influenza_news.urls import registrable_host
 
 logger = get_logger("fetching.http")
 
-#: Text in a response body that means "stop", regardless of status code.
-BODY_BLOCK_MARKERS: tuple[tuple[str, ErrorCode], ...] = (
-    ("unusual traffic", ErrorCode.UNUSUAL_TRAFFIC),
-    ("我們的系統偵測到", ErrorCode.UNUSUAL_TRAFFIC),
-    ("g-recaptcha", ErrorCode.CAPTCHA),
-    ("recaptcha/api.js", ErrorCode.CAPTCHA),
-    ("hcaptcha.com", ErrorCode.CAPTCHA),
-    ("cf-challenge", ErrorCode.CAPTCHA),
-    ("請完成驗證", ErrorCode.CAPTCHA),
-    ("access denied", ErrorCode.ACCESS_DENIED),
-    ("拒絕存取", ErrorCode.ACCESS_DENIED),
-    ("are you a robot", ErrorCode.CAPTCHA),
-)
+#: Interstitial markers, shared with the extractor so the HTTP path and
+#: the Playwright path cannot drift apart. See errors.INTERSTITIAL_MARKERS.
+BODY_BLOCK_MARKERS: tuple[tuple[str, ErrorCode], ...] = INTERSTITIAL_MARKERS
 
 _HTML_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain")
 _RETRY_AFTER_SECONDS_RE = re.compile(r"^\s*(\d+)\s*$")

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from bs4 import BeautifulSoup
 
 from tw_cdc_influenza_news.dates import DEFAULT_TIMEZONE
-from tw_cdc_influenza_news.errors import ErrorCode
+from tw_cdc_influenza_news.errors import INTERSTITIAL_MARKERS, ErrorCode
 from tw_cdc_influenza_news.extraction.dateparse import (
     DateCandidate,
     json_ld_dates,
@@ -234,8 +234,18 @@ def _text_from(node) -> str:  # type: ignore[no-untyped-def]
 
 
 def detect_access_block(html: str, text: str) -> ErrorCode | None:
-    """Name the access control on the page, if there is one."""
+    """Name the access control on the page, if there is one.
+
+    Interstitials are checked first and by the SHARED marker list: HTML that
+    came back through the Playwright fallback never passed the HTTP response
+    classifier, so this is the only place a browser-rendered CAPTCHA or
+    "unusual traffic" page gets recognised. Without it such a page is parsed
+    as if it were an article.
+    """
     haystack = f"{html[:20000]}\n{text[:5000]}".lower()
+    for marker, code in INTERSTITIAL_MARKERS:
+        if marker in haystack:
+            return code
     if any(marker.lower() in haystack for marker in _PAYWALL_MARKERS):
         return ErrorCode.PAYWALL
     if any(marker.lower() in haystack for marker in _LOGIN_MARKERS):

@@ -198,6 +198,30 @@ def test_a_captcha_interstitial_is_detected():
     )
 
 
+def test_the_extractor_and_the_http_layer_agree_on_an_interstitial():
+    """The extractor is the ONLY guard on Playwright-rendered HTML, which
+    never passes through the HTTP response classifier."""
+    from tw_cdc_influenza_news.fetching import classify_response
+
+    page = html("captcha_interstitial.html")
+
+    assert detect_access_block(page, page) == classify_response(200, page, "text/html")
+
+
+def test_an_article_that_merely_mentions_captchas_is_not_flagged():
+    """The markers are specific strings, not the bare word: a news story
+    about bot defences is a page we want."""
+    page = (
+        "<html lang='zh-TW'><body><article>"
+        "<h1>疾管署網站導入驗證碼防止機器人掛號</h1>"
+        "<p>疾管署今日說明，為阻擋自動化程式，將在預約系統加入 CAPTCHA 驗證機制。"
+        "官員表示，這項措施不影響一般民眾使用，也不會蒐集額外個資。</p>"
+        "</article></body></html>"
+    )
+
+    assert detect_access_block(page, page) is None
+
+
 # --- javascript detection ---------------------------------------------------
 
 
