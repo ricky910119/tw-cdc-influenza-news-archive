@@ -132,16 +132,33 @@ Windows 可以用 `.\run.ps1 <command>`（會自動載入 `.env` 到該次行程
 
 ---
 
-## 三個 discovery provider
+## Discovery provider
 
 | provider | 需要 API key | 完整性 | 說明 |
 | --- | --- | --- | --- |
 | `serpapi-google-news` | 是 | 有日期切片，可觀測截斷 | **建議主要模式**。SerpApi 的 `engine=google_news`，`gl=tw`、`hl=zh-TW`、依日期排序，原始回應會存檔（已移除 API key）。配額或授權失敗時 **fail closed**。 |
 | `serpapi-google-search-news-tab` | 是 | 同上 | `engine=google&tbm=nws`，一般搜尋的 News 分頁。預設關閉。與上者**合併**而非取代，兩者結果不假設相同。 |
 | `google-news-rss` | 否 | **best effort，非完整性保證** | Google News RSS 無總數、無分頁游標，短結果與被截斷的結果無法區分。低頻率請求、原始 XML 快取；一偵測到 consent 頁、CAPTCHA、403/429 就**停止**。 |
+| `cdc-bulletin` | 否 | 權威來源，站方自己的日期過濾 | **疾管署自己的新聞稿索引**（cdc.gov.tw/Bulletin）。不經過搜尋引擎，所以不會因為沒被索引而漏掉，也沒有看不見的結果上限。用查詢的 `site_keyword`（純子字串），不是 `text`。 |
 | `manual-urls` | 否 | 取決於你的清單 | 由 `import-urls` 驅動，不做搜尋。 |
 
-沒有 API key 時：`manual-urls` 與 `google-news-rss`（明確標示 best-effort）仍可運作。
+沒有 API key 時：`cdc-bulletin`、`manual-urls` 與 `google-news-rss`（明確標示
+best-effort）仍可運作。其中 `cdc-bulletin` 是唯一不靠搜尋引擎、直接讀發布者索引的來源。
+
+### 只抓疾管署新聞稿（不需要 API key）
+
+把 `configs/default.yaml` 的 `providers.cdc_bulletin.enabled` 設為 `true`，然後：
+
+```powershell
+.\.venv\Scripts\python.exe -m tw_cdc_influenza_news crawl `
+  --start-date 2023-01-01 `
+  --end-date 2026-12-31 `
+  --provider cdc-bulletin
+```
+
+查詢用的是每個 query 的 `site_keyword`（預設 `流感` 與 `influenza`），不是 `text`
+—— 站方的搜尋是純子字串比對，`"疾管署" "流感"` 這種語法在那裡一筆都找不到。沒有設
+`site_keyword` 的 query 不會送給這個站，並在覆蓋率報告裡註明原因。
 
 ---
 
@@ -162,6 +179,8 @@ Windows 可以用 `.\run.ps1 <command>`（會自動載入 `.env` 到該次行程
   `last_day`（切片的 `end` 減一天）。
 - Google News RSS 用查詢字串裡的 `after:` / `before:`，`after:` 含、`before:` 不含，
   剛好對應我們的 `[start, end)`，所以直接帶入切片邊界。
+- 疾管署新聞稿用表單的 `startTime` / `endTime`（格式 `yyyy.mm.dd`），**兩端皆含**，
+  所以跟 SerpApi 一樣用 `last_day`。
 
 把其中一種轉換複製到另一個 adapter，會整整平移一天份的新聞。
 

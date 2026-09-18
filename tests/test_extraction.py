@@ -74,6 +74,42 @@ def test_metadata_is_collected_even_when_the_body_is_missing():
     assert result.content is None or len(result.content) < 200
 
 
+def test_a_page_with_no_semantic_markup_still_yields_a_body():
+    """Government and older CMS pages carry no <article>, no itemprop and no
+    recognisable class. The last-resort body fallback is this or nothing."""
+    page = (
+        "<html lang='zh-TW'><body>"
+        "<nav class='navbar'><a href='/'>首頁</a></nav>"
+        "<div><div class='text-right'>發佈日期：2024-01-15</div>"
+        + "<p>疾管署今日公布最新流感監測資料，呼籲民眾接種疫苗。</p>" * 12
+        + "</div>"
+        "<footer class='site-footer'>版權所有</footer>"
+        "</body></html>"
+    )
+
+    result = extract_article(page, "https://www.cdc.gov.tw/Bulletin/Detail/x")
+
+    assert result.is_usable(200)
+    assert "首頁" not in (result.content or "")
+    assert "版權所有" not in (result.content or "")
+    assert result.published_date == "2024-01-15"
+
+
+def test_the_body_fallback_never_outranks_a_real_container():
+    """It runs only when every targeted attempt found nothing, so a page with
+    a proper <article> is not diluted by surrounding page text."""
+    page = (
+        "<html><body>"
+        "<div class='junk'>" + "周邊雜訊文字。" * 200 + "</div>"
+        "<article>" + "<p>疾管署今日公布最新流感監測資料。</p>" * 10 + "</article>"
+        "</body></html>"
+    )
+
+    result = extract_article(page, "https://news.example.tw/a")
+
+    assert result.content and "周邊雜訊文字" not in result.content
+
+
 def test_empty_response_does_not_raise():
     result = extract_article("", "https://news.example.tw/a")
 

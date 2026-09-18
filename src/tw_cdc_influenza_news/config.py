@@ -88,6 +88,12 @@ class QueryConfig(BaseModel):
     id: str
     text: str
     language: str = "zh-TW"
+    #: What this query means on a site that matches plain substrings rather
+    #: than search-engine syntax. ``"疾管署" "流感"`` finds nothing on the CDC
+    #: listing; ``流感`` finds everything. A query without one is simply not
+    #: asked of such sites, and the coverage report says so -- inventing a
+    #: keyword by stripping the quotes would silently change what was asked.
+    site_keyword: str | None = None
 
     @field_validator("text")
     @classmethod
@@ -149,6 +155,23 @@ class GoogleNewsRssConfig(BaseModel):
     stop_on_block: bool = True
 
 
+class CdcBulletinConfig(BaseModel):
+    """The publisher's own press-release index. No API key, no search engine."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    base_url: str = "https://www.cdc.gov.tw/Bulletin/List"
+    #: Opaque category id in the listing path. The default is 新聞稿
+    #: (press releases). Other categories have their own ids.
+    category_id: str = "MmgtpeidAR5Ooai4-fgHzQ"
+    page_size: int = Field(default=100, gt=0, le=500)
+    max_pages_per_slice: int = Field(default=20, gt=0)
+    #: The site declares no Crawl-delay, so this is our own restraint.
+    requests_per_minute: int = Field(default=6, gt=0)
+    save_raw_html: bool = True
+
+
 class ManualUrlsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -167,6 +190,7 @@ class ProvidersConfig(BaseModel):
         )
     )
     google_news_rss: GoogleNewsRssConfig = Field(default_factory=GoogleNewsRssConfig)
+    cdc_bulletin: CdcBulletinConfig = Field(default_factory=CdcBulletinConfig)
     manual_urls: ManualUrlsConfig = Field(default_factory=ManualUrlsConfig)
 
 

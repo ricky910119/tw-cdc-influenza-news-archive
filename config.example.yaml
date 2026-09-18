@@ -30,21 +30,27 @@ queries:
   - id: q_quoted_tw_flu
     text: '"疾管署" "流感"'
     language: zh-TW
+    site_keyword: '流感'
   - id: q_quoted_full_flu
     text: '"疾病管制署" "流感"'
     language: zh-TW
+    site_keyword: '流感'
   - id: q_quoted_tw_influenza
     text: '"疾管署" influenza'
     language: zh-TW
+    site_keyword: 'influenza'
   - id: q_quoted_full_influenza
     text: '"疾病管制署" influenza'
     language: zh-TW
+    site_keyword: 'influenza'
   - id: q_bare_tw_flu
     text: '疾管署 流感'
     language: zh-TW
+    site_keyword: '流感'
   - id: q_bare_full_flu
     text: '疾病管制署 流感'
     language: zh-TW
+    site_keyword: '流感'
 
 # Used only to annotate matched_keywords on a record. Not a filter: an
 # article discovered by a configured query is kept even if none of these
@@ -112,6 +118,21 @@ providers:
     # On a redirect to a consent/sorry page, a CAPTCHA, or any block
     # signal: stop this provider for the run. We do not work around it.
     stop_on_block: true
+
+  # The publisher's own press-release index. No API key, no search engine
+  # between us and the newsroom, so nothing is missing because it was never
+  # indexed. Uses `site_keyword` from the queries above, not `text`.
+  # robots.txt (checked 2026-09-18) permits /Bulletin/ and declares no
+  # Crawl-delay; requests_per_minute below is our own restraint.
+  cdc_bulletin:
+    enabled: false
+    base_url: "https://www.cdc.gov.tw/Bulletin/List"
+    # 新聞稿 (press releases). Other bulletin categories have their own ids.
+    category_id: "MmgtpeidAR5Ooai4-fgHzQ"
+    page_size: 100
+    max_pages_per_slice: 20
+    requests_per_minute: 6
+    save_raw_html: true
 
   manual_urls:
     enabled: true

@@ -499,6 +499,17 @@ def _extract_body(
             continue
         better(_text_from(node), ExtractionMethod.CONTENT_CONTAINER)
 
+    if best is None:
+        # Last resort: the whole body, with the furniture already stripped.
+        # Government and older CMS pages routinely carry no semantic markup
+        # at all -- no <article>, no itemprop, no recognisable class -- and
+        # for those the choice is this or nothing. It runs ONLY when every
+        # targeted attempt found nothing, so it can never outrank a real
+        # container merely by being longer.
+        body = working.find("body")
+        if body is not None:
+            better(_text_from(body), ExtractionMethod.CONTENT_CONTAINER)
+
     _ = soup
     if best is None:
         return None, ExtractionMethod.NONE
