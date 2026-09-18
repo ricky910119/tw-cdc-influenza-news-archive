@@ -191,12 +191,33 @@ def clean_text(text: str) -> str:
     return _BLANKS_RE.sub("\n\n", joined).strip()
 
 
+def _is_decomposed(tag) -> bool:  # type: ignore[no-untyped-def]
+    """Whether this tag has already been destroyed.
+
+    ``find_all`` returns a list built up front. Decomposing a container also
+    destroys its descendants, which are still sitting in that list -- and a
+    decomposed tag has ``attrs is None``, so touching it raises TypeError.
+    Nested furniture is the common case on real sites, so this is not an
+    edge case; without the check, extraction crashes on exactly the pages
+    that need the boilerplate stripping most.
+    """
+    if getattr(tag, "decomposed", False):
+        return True
+    return getattr(tag, "attrs", None) is None or getattr(tag, "name", None) is None
+
+
 def _is_boilerplate(tag) -> bool:  # type: ignore[no-untyped-def]
+    if _is_decomposed(tag):
+        return False
+    attrs = tag.attrs or {}
+    class_value = attrs.get("class") or []
+    if isinstance(class_value, str):
+        class_value = [class_value]
     identifiers = " ".join(
         [
-            " ".join(tag.get("class", [])) if tag.has_attr("class") else "",
-            tag.get("id", "") or "",
-            tag.get("role", "") or "",
+            " ".join(str(c) for c in class_value),
+            str(attrs.get("id") or ""),
+            str(attrs.get("role") or ""),
         ]
     ).lower()
     return any(hint in identifiers for hint in _BOILERPLATE_HINTS)
@@ -206,9 +227,10 @@ def strip_boilerplate(soup: BeautifulSoup) -> BeautifulSoup:
     """Remove furniture in place and return the same soup, for chaining."""
     for tag_name in _STRIP_TAGS:
         for tag in soup.find_all(tag_name):
-            tag.decompose()
+            if not _is_decomposed(tag):
+                tag.decompose()
     for tag in soup.find_all(True):
-        if tag.name in {"html", "body"}:
+        if _is_decomposed(tag) or tag.name in {"html", "body"}:
             continue
         if _is_boilerplate(tag):
             tag.decompose()

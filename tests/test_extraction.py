@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
+import pytest
+
 from zoneinfo import ZoneInfo
 
 from tw_cdc_influenza_news.errors import ErrorCode, is_blocked, is_domain_level_block
@@ -95,9 +97,16 @@ def test_a_page_with_no_semantic_markup_still_yields_a_body():
     assert result.published_date == "2024-01-15"
 
 
-def test_the_body_fallback_never_outranks_a_real_container():
-    """It runs only when every targeted attempt found nothing, so a page with
-    a proper <article> is not diluted by surrounding page text."""
+def test_the_body_fallback_never_outranks_a_real_container(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The claim is about OUR fallback chain, so trafilatura is taken out of
+    the picture -- with it in, it makes its own (separate) judgement about
+    which block is the article, and this would be testing that instead."""
+    from tw_cdc_influenza_news.extraction import extractor as extractor_module
+
+    monkeypatch.setattr(extractor_module, "trafilatura", None)
+
     page = (
         "<html><body>"
         "<div class='junk'>" + "周邊雜訊文字。" * 200 + "</div>"
@@ -108,6 +117,30 @@ def test_the_body_fallback_never_outranks_a_real_container():
     result = extract_article(page, "https://news.example.tw/a")
 
     assert result.content and "周邊雜訊文字" not in result.content
+    assert result.method is ExtractionMethod.ARTICLE_TAG
+
+
+def test_nested_boilerplate_does_not_crash_the_stripper():
+    """Decomposing a container destroys its descendants, which are still in
+    the list find_all built. Touching one of those raises TypeError, so
+    without a guard extraction dies on exactly the pages that need stripping
+    most -- nested furniture is the normal case, not an edge case."""
+    page = (
+        "<html><body>"
+        "<div class='site-header'>"
+        "  <div class='nav-primary'><ul><li class='menu-item'>首頁</li></ul></div>"
+        "  <div class='social-share'><a class='share-link'>分享</a></div>"
+        "</div>"
+        "<div><p>" + "疾管署今日公布最新流感監測資料，呼籲民眾接種疫苗。" * 12 + "</p></div>"
+        "<div class='related-articles'><div class='recommend-item'>延伸閱讀</div></div>"
+        "</body></html>"
+    )
+
+    result = extract_article(page, "https://www.cdc.gov.tw/Bulletin/Detail/x")
+
+    assert result.is_usable(200)
+    assert "首頁" not in (result.content or "")
+    assert "延伸閱讀" not in (result.content or "")
 
 
 def test_empty_response_does_not_raise():

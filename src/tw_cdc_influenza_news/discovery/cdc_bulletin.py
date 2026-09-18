@@ -30,6 +30,7 @@ the project's default per-domain rate applies.
 from __future__ import annotations
 
 import re
+from html import unescape
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -105,8 +106,17 @@ def parse_listing(html: str, *, base_url: str) -> list[dict[str, str]]:
 
 
 def has_next_page(html: str, current_page: int) -> bool:
-    """Whether the pager offers a page after ``current_page``."""
-    return bool(re.search(rf"[?&]page={current_page + 1}\b", html))
+    """Whether the pager offers a page after ``current_page``.
+
+    ``&`` inside an href is HTML-escaped, so the live markup reads
+    ``?page=3&amp;keyword=...``. Today the site happens to put ``page``
+    first, where a naive ``[?&]page=`` still matches -- but if that ordering
+    ever changed, pagination would stop at page one and simply return fewer
+    results, with no error anywhere. Unescaping first removes the dependency
+    on parameter order.
+    """
+    unescaped = unescape(html)
+    return bool(re.search(rf"[?&]page={current_page + 1}(?:\b|&|\")", unescaped))
 
 
 class CdcBulletinProvider(DiscoveryProvider):

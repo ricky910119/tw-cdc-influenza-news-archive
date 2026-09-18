@@ -84,6 +84,29 @@ def test_pagination_is_read_from_the_pager():
     assert has_next_page(html, 2) is False
 
 
+@pytest.mark.parametrize(
+    "href",
+    [
+        # The live site's ordering today...
+        '<a href="/Bulletin/List/X?page=2&amp;keyword=%E6%B5%81%E6%84%9F">2</a>',
+        # ...and the ordering it is free to switch to tomorrow.
+        '<a href="/Bulletin/List/X?keyword=%E6%B5%81%E6%84%9F&amp;page=2">2</a>',
+        '<a href="/Bulletin/List/X?keyword=x&page=2">2</a>',
+    ],
+)
+def test_the_pager_is_found_whatever_the_parameter_order(href: str):
+    """A missed pager link does not raise -- it silently stops at page one and
+    returns fewer results, so the detection must not depend on the site
+    keeping `page` first or on `&` being unescaped."""
+    assert has_next_page(f"<div class='pagination'>{href}</div>", 1) is True
+
+
+def test_a_page_number_is_not_confused_with_a_longer_one():
+    html = '<a href="/Bulletin/List/X?page=20">20</a>'
+
+    assert has_next_page(html, 1) is False  # page=2 must not match page=20
+
+
 # --- date conversion ----------------------------------------------------------
 
 
