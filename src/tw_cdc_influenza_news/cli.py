@@ -169,6 +169,29 @@ def doctor(
         "all present" if not missing else f"missing: {', '.join(missing)}",
     )
 
+    # --- the CLI stack itself -----------------------------------------------
+    # typer 0.12 and click 8.2+ disagree about flag validation badly enough
+    # that the CLI cannot be built at all. If that pair is ever installed,
+    # doctor never gets to run -- so this row is for the case where something
+    # milder is wrong, and for reporting the versions when asking for help.
+    try:
+        import click as _click
+
+        click_version = _click.__version__
+        click_major_minor = tuple(int(p) for p in click_version.split(".")[:2])
+        add(
+            "CLI stack",
+            click_major_minor < (8, 2),
+            f"typer {typer.__version__}, click {click_version}"
+            + (
+                ""
+                if click_major_minor < (8, 2)
+                else " -- typer 0.12 needs click < 8.2; reinstall from requirements.lock"
+            ),
+        )
+    except Exception as exc:  # pragma: no cover - only on a broken install
+        add("CLI stack", None, f"could not determine versions: {exc}")
+
     # --- config -----------------------------------------------------------
     config: AppConfig | None = None
     try:
@@ -452,8 +475,11 @@ def import_urls(
     path: str = typer.Argument(..., help="A .jsonl, .json or .txt file of URLs."),
     config_path: Optional[str] = ConfigOption,
     run_id: Optional[str] = typer.Option(None, "--run-id", help="Attach to this run id."),
-    fetch: bool = typer.Option(
-        True, "--fetch/--no-fetch", help="Fetch the imported URLs immediately."
+    # A single negative flag rather than a --fetch/--no-fetch pair: the
+    # paired form is the one construct in this CLI that click and typer
+    # disagree about across versions, and fetching is the default anyway.
+    no_fetch: bool = typer.Option(
+        False, "--no-fetch", help="Import only; do not fetch the URLs now."
     ),
     note: Optional[str] = typer.Option(None, "--note", help="Recorded as the query text."),
 ) -> None:
@@ -501,7 +527,7 @@ def import_urls(
         for lineno, value, reason in result.skipped[:20]:
             console.print(f"  [yellow]line {lineno}[/yellow] {reason}: {value}")
 
-        if fetch:
+        if not no_fetch:
             asyncio.run(orchestrator.fetch_pending())
             console.print(_stats_table(orchestrator.stats.as_counts()))
             db.finish_run(rid, status="completed", counts=orchestrator.stats.as_counts())
