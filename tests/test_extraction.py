@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from zoneinfo import ZoneInfo
 
-from tw_cdc_influenza_news.errors import ErrorCode
+from tw_cdc_influenza_news.errors import ErrorCode, is_blocked, is_domain_level_block
 from tw_cdc_influenza_news.extraction import (
     clean_text,
     detect_access_block,
@@ -190,12 +190,20 @@ def test_login_wall_is_detected():
 
 
 def test_a_captcha_interstitial_is_detected():
+    """Assert the consequence, not the label.
+
+    This page carries two signals at once -- "unusual traffic" in the heading
+    and a g-recaptcha widget -- so which ErrorCode wins depends on marker
+    order, and either naming is defensible. What must never vary is that the
+    page counts as a block and that the block indicts the whole host.
+    """
     page = html("captcha_interstitial.html")
 
-    assert detect_access_block(page, page) in (
-        ErrorCode.CAPTCHA,
-        ErrorCode.ACCESS_DENIED,
-    )
+    code = detect_access_block(page, page)
+
+    assert code is not None
+    assert is_blocked(code)
+    assert is_domain_level_block(code)
 
 
 def test_the_extractor_and_the_http_layer_agree_on_an_interstitial():
