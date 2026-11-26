@@ -36,7 +36,8 @@ EVIDENCE_INSTRUCTION = """請將下列新聞全文或既有筆記整理成繁體
 CHAT_INSTRUCTION = """你是疫情資料分析助手，使用繁體中文回答。
 依據附上的證據筆記與來源清單回答，可連續追問。
 筆記來自選定期間新聞全文的分批整理，可能有摘要遺漏；不能宣稱已讀到缺少的資料。
-每個重要數據及走勢判斷附上來源ID，例如 [A003]，並盡量附來源網址。
+每個重要數據及走勢判斷附上來源ID，例如 [A003]。
+標題與網址由程式依原始資料列出，不自行補寫未見過的網址。
 區分新聞明述的事實與你的推論。使用新聞內的監測週，不將發布週當監測週。
 分開分析不同疾病、指標、單週及累計值，不混用不同統計期間或比較基期。
 沒有新聞或數據的週應說資訊不足，不能填零或假設疫情持平。
@@ -186,15 +187,18 @@ def load_articles(path, start, end):
 def prepare_notes(args, articles, folder, input_budget):
     cache_path = folder / "evidence_cache.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
-    catalog = "\n".join("[%s] %s %s\n%s" % (
-        a["id"], a["published_date"], a["title"][:40], a["url"]) for a in articles)
+    # Keep bibliographic metadata on disk and in /sources, not in every prompt.
+    # Citations are resolved to actual titles/URLs locally after each answer.
+    catalog = ", ".join(a["id"] for a in articles)
     prefix = (CHAT_INSTRUCTION + "\n新聞發布日期範圍：%s 至 %s（含首尾）。\n"
-              "這是發布日篩選；內文提及的監測週可能不同。\n來源清單：\n%s\n"
+              "這是發布日篩選；內文提及的監測週可能不同。\n已載入來源ID：%s\n"
+              "完整標題與網址由程式保存，可用 /sources 或 /source 查閱。\n"
               "以下為模型分批整理的證據筆記，核對原文請用 /source：\n") % (
                   args.start_date, args.end_date, catalog)
     note_budget = input_budget - size(prefix) - 1000
     if note_budget < 1500:
         raise ValueError("來源清單已接近上下文容量；請縮小日期範圍，或明確提高 --num-ctx。")
+    print("證據筆記可用預算：%d UTF-8 bytes（保守容量估計，不是 token 計數）。" % note_budget)
     batch_budget = input_budget - size(EVIDENCE_INSTRUCTION) - 500
     texts = []
     for article in articles:
@@ -210,8 +214,9 @@ def prepare_notes(args, articles, folder, input_budget):
         notes = []
         instruction = EVIDENCE_INSTRUCTION + (
             "整理長度目標：約500個中文字；保留關鍵數據與來源ID。\n" if level == 1 else
-            "這是合併階段，請用約%d個中文字整理，優先保留跨週走勢、指標與來源ID。\n" %
-            max(250, note_budget // (4 * len(batches))))
+            "這是合併階段，請以最多約%d個中文字條列跨週走勢、關鍵指標與來源ID。"
+            "不要重複指示、長篇前言、標題清單或來源網址；網址由程式另行提供。\n" %
+            max(32, note_budget // (6 * len(batches))))
         for index, batch in enumerate(batches, 1):
             key = hashlib.sha256((instruction + batch).encode("utf-8")).hexdigest()
             print("整理資料：第 %d 輪，批次 %d/%d%s" % (
@@ -221,15 +226,24 @@ def prepare_notes(args, articles, folder, input_budget):
                                   [{"role": "user", "content": instruction + batch}],
                                   args.num_ctx, args.timeout, think=args.think)
                 dump_file(cache_path, cache)
-            notes.append(cache[key])
+            note = cache[key]
+            # Remove repeated known source URLs, not epidemiological evidence.
+            # Leave the raw cached output unchanged so completed batches survive.
+            for article in articles:
+                if article["url"]:
+                    note = note.replace(article["url"], "[%s]" % article["id"])
+            notes.append(note)
         combined = "\n\n".join(notes)
         if size(combined) <= note_budget:
             return prefix + combined
-        print("證據筆記仍超過本次上下文預算，繼續合併整理；原文完整保留。", flush=True)
+        print("筆記 %d / 預算 %d UTF-8 bytes，仍需合併；原文完整保留。" % (
+            size(combined), note_budget), flush=True)
         if level > 1 and size(combined) >= sum(size(t) for t in texts):
             break
         texts = notes
-    raise ValueError("模型未能將證據整理至上下文容量內。快取已保留；請縮小日期範圍或調整 --num-ctx。")
+    raise ValueError("證據合併仍未達預算：筆記 %d / 可用 %d UTF-8 bytes，num_ctx=%d tokens。"
+                     "已保留全部完成批次，未截斷原文或丟棄來源。" % (
+                         size(combined), note_budget, args.num_ctx))
 
 
 def main():
@@ -346,6 +360,15 @@ def main():
             continue
         history.extend([current, {"role": "assistant", "content": answer}])
         dump_file(transcript, {"fingerprint": fingerprint, "model": args.model, "messages": history})
+        cited = sorted(set(re.findall(r"(?i)\bA[0-9]+\b", answer)))
+        if cited:
+            print("\n來源對照（依原始資料，不由模型生成網址）：")
+            for source_id in cited:
+                article = by_id.get(source_id.upper())
+                if article:
+                    print("[{id}] {published_date} {title}\n{url}".format(**article))
+                else:
+                    print("[%s] 不在載入資料中，請核對這項引用。" % source_id)
 
 
 if __name__ == "__main__":
