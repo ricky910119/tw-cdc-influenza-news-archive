@@ -125,7 +125,7 @@ providers:
   # robots.txt (checked 2026-09-18) permits /Bulletin/ and declares no
   # Crawl-delay; requests_per_minute below is our own restraint.
   cdc_bulletin:
-    enabled: false
+    enabled: true
     base_url: "https://www.cdc.gov.tw/Bulletin/List"
     # 新聞稿 (press releases). Other bulletin categories have their own ids.
     category_id: "MmgtpeidAR5Ooai4-fgHzQ"

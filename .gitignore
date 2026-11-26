@@ -38,6 +38,7 @@ data/state/**
 !data/state/.gitkeep
 data/output/**
 !data/output/.gitkeep
+news_chat_state/
 *.sqlite
 *.sqlite3
 *.sqlite3-journal
