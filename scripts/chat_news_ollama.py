@@ -65,6 +65,15 @@ def size(text):
     return len(text.encode("utf-8"))
 
 
+def request_size(messages):
+    # One accounting for every chat request: UTF-8 bytes per message plus a
+    # 64-unit chat-template allowance per message. For a byte-fallback
+    # tokenizer such as Gemma's the token count should not exceed the byte
+    # count, so this over-estimates tokens (CJK is 3 bytes per character);
+    # it is not a token count and was not checked against the model tokenizer.
+    return sum(size(m["content"]) + 64 for m in messages)
+
+
 def pack(texts, budget):
     """Split all input without dropping any text, then pack bounded batches."""
     pieces = []
@@ -184,7 +193,7 @@ def load_articles(path, start, end):
     return articles
 
 
-def prepare_notes(args, articles, folder, input_budget):
+def prepare_notes(args, articles, folder, input_budget, chat_budget):
     cache_path = folder / "evidence_cache.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.exists() else {}
     # Keep bibliographic metadata on disk and in /sources, not in every prompt.
@@ -195,10 +204,17 @@ def prepare_notes(args, articles, folder, input_budget):
               "完整標題與網址由程式保存，可用 /sources 或 /source 查閱。\n"
               "以下為模型分批整理的證據筆記，核對原文請用 /source：\n") % (
                   args.start_date, args.end_date, catalog)
-    note_budget = input_budget - size(prefix) - 1000
-    if note_budget < 1500:
+    # Hard limit: the notes must fit the same request_size check the chat loop
+    # applies, with room for a first question of up to 1000 bytes.
+    note_limit = chat_budget - request_size([{"content": prefix}, {"content": ""}]) - 1000
+    # Soft length hint sent to the model; its wording is part of the cache key,
+    # so it is unchanged. Correctness never relies on the model obeying it.
+    merge_target = input_budget - size(prefix) - 1000
+    if note_limit < 1500:
         raise ValueError("來源清單已接近上下文容量；請縮小日期範圍，或明確提高 --num-ctx。")
-    print("證據筆記可用預算：%d UTF-8 bytes（保守容量估計，不是 token 計數）。" % note_budget)
+    print("證據筆記上限：%d UTF-8 bytes（對話上限 %d 扣系統前言 %d、問題預留 1000 及每則訊息模板預留 64；"
+          "bytes 是 token 的保守上界估計，不是 token 計數）。" % (
+              note_limit, chat_budget, size(prefix)))
     batch_budget = input_budget - size(EVIDENCE_INSTRUCTION) - 500
     texts = []
     for article in articles:
@@ -216,7 +232,7 @@ def prepare_notes(args, articles, folder, input_budget):
             "整理長度目標：約500個中文字；保留關鍵數據與來源ID。\n" if level == 1 else
             "這是合併階段，請以最多約%d個中文字條列跨週走勢、關鍵指標與來源ID。"
             "不要重複指示、長篇前言、標題清單或來源網址；網址由程式另行提供。\n" %
-            max(32, note_budget // (6 * len(batches))))
+            max(32, merge_target // (6 * len(batches))))
         for index, batch in enumerate(batches, 1):
             key = hashlib.sha256((instruction + batch).encode("utf-8")).hexdigest()
             print("整理資料：第 %d 輪，批次 %d/%d%s" % (
@@ -234,16 +250,27 @@ def prepare_notes(args, articles, folder, input_budget):
                     note = note.replace(article["url"], "[%s]" % article["id"])
             notes.append(note)
         combined = "\n\n".join(notes)
-        if size(combined) <= note_budget:
+        if size(combined) <= note_limit:
+            print("證據筆記 %d / 上限 %d UTF-8 bytes（第 %d 輪整理結果）。\n"
+                  "對話使用模型整理的摘要，不是全文；核對原文請用 /source A001，"
+                  "或在問題中寫出來源ID以帶入該篇全文。" % (size(combined), note_limit, level))
+            mentioned = set(re.findall(r"\bA[0-9]+\b", combined))
+            missing = [a["id"] for a in articles if a["id"] not in mentioned]
+            if missing:
+                print("摘要中未出現的來源ID（可能被合併省略或以範圍表示；原文仍可用 /source 查看）：%s"
+                      % ", ".join(missing))
             return prefix + combined
-        print("筆記 %d / 預算 %d UTF-8 bytes，仍需合併；原文完整保留。" % (
-            size(combined), note_budget), flush=True)
+        print("第 %d 輪筆記 %d / 上限 %d UTF-8 bytes，仍需合併；原文完整保留。" % (
+            level, size(combined), note_limit), flush=True)
+        # The model may ignore the length hint; stop when a round does not shrink.
         if level > 1 and size(combined) >= sum(size(t) for t in texts):
             break
         texts = notes
-    raise ValueError("證據合併仍未達預算：筆記 %d / 可用 %d UTF-8 bytes，num_ctx=%d tokens。"
+    raise ValueError("模型合併後的證據筆記仍超過保守容量估計：筆記 %d / 上限 %d UTF-8 bytes"
+                     "（num_ctx=%d tokens 扣生成預留 4096 後為 %d，再扣系統前言、問題預留與模板預留）。"
+                     "這是 bytes 上界估計，不是實際 token 數；模型未遵守合併長度提示時會發生。"
                      "已保留全部完成批次，未截斷原文或丟棄來源。" % (
-                         size(combined), note_budget, args.num_ctx))
+                         size(combined), note_limit, args.num_ctx, chat_budget))
 
 
 def main():
@@ -280,14 +307,19 @@ def main():
     folder = (args.state_dir or args.articles.parent / "news_chat_state") / fingerprint[:16]
     folder.mkdir(parents=True, exist_ok=True)
     dump_file(folder / "selected_articles.json", articles)
-    # Leave room for answer generation and message-template overhead. This is
-    # deliberately conservative, not a tokenizer or a promise about VRAM use.
-    input_budget = args.num_ctx - 4096 - 1024
+    # Reserve 4096 tokens for the answer. Chat requests are measured with
+    # request_size, which already includes the per-message template allowance,
+    # so no second template reserve is taken here. Not a tokenizer or a promise
+    # about VRAM use.
+    chat_budget = args.num_ctx - 4096
+    # Evidence batches keep their original packing budget (an extra 1024
+    # margin) so the completed batches in the cache keep the same keys.
+    input_budget = chat_budget - 1024
     print("模型：%s\nOllama：%s\n發布日：%s 至 %s\n上下文：%d" % (
         args.model, args.base_url, args.start_date, args.end_date, args.num_ctx))
     print("請求思考模式：%s；生成上限 num_predict=-1。" % ("開啟" if args.think else "關閉"))
     print("首次會分批整理全部正文並保存快取；不下載套件或模型。", flush=True)
-    context = prepare_notes(args, articles, folder, input_budget)
+    context = prepare_notes(args, articles, folder, input_budget, chat_budget)
     dump_file(folder / "evidence_notes.json", {"fingerprint": fingerprint, "context": context})
     history = []
     if args.resume:
@@ -341,10 +373,12 @@ def main():
             print("本輪改用指定新聞的完整原文：%s" % ", ".join(focused))
         def request_messages():
             return [{"role": "system", "content": request_context}] + recent + [current]
-        while recent and sum(size(m["content"]) + 64 for m in request_messages()) > input_budget:
+        while recent and request_size(request_messages()) > chat_budget:
             recent = recent[2:]
-        if sum(size(m["content"]) + 64 for m in request_messages()) > input_budget:
-            print("本輪內容超過上下文預算，請縮短問題或一次核對較少篇原文；未截斷新聞。")
+        if request_size(request_messages()) > chat_budget:
+            print("本輪請求估計 %d / 上限 %d UTF-8 bytes（保守估計，不是 token 數），"
+                  "請縮短問題或一次核對較少篇原文；未截斷新聞。" % (
+                      request_size(request_messages()), chat_budget))
             continue
         if len(recent) < len(history):
             print("本輪只帶入最近 %d 輪對話；本輪選定資料仍保留，完整對話仍存於紀錄。" % (len(recent) // 2))
